@@ -66,8 +66,16 @@ string. It contains:
 ```json
 { "iss": "https://help.ebvs.eu/ec", "aud": "https://evidence.college.org", "college": "ECVN",
   "sub": "p_…", "role": "candidate|reviewer", "case_ref": "ec-…", "act": "upload|review|inbox",
-  "iat": 1762600000, "exp": 1762600120, "jti": "uuid" }
+  "iat": 1762600000, "exp": 1762600120, "jti": "uuid",
+  "ctx": { "relates_to": "examination", "subject": "Examination — 2027 diet",
+           "types": ["extra_time", "separate_room", "rest_breaks", "deferral", "extension", "other"],
+           "cycles": [{ "id": 12, "label": "Diet 2028" }], "codes": [{ "code": "SCRIBE", "label": "Scribe" }] } }
 ```
+
+`ctx` is on `upload` and `review` passes: the decision context, so the cabinet's decision screen
+offers only what My College will accept: what the claim relates to, the adjustment types that fit
+it, the College's open examination diets (for a deferral) and its own adjustment codes. It is
+College configuration only and names no one. My College validates every decision again on receipt.
 
 The cabinet must:
 

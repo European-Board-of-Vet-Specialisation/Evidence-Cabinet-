@@ -1,14 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { call, pass, signal, postForm, cookiesOf, newRef, env, ORIGIN, PDF, collegeVerify, mcSign } from './helpers'
+import { call, pass, signal, newRef, env, ORIGIN, collegeVerify, mcSign, caseWithEvidence } from './helpers'
 import { TYP } from '../src/mc'
 
-async function caseWithEvidence() {
-  const ref = newRef()
-  const launch = await call(postForm('/launch', { pass: await pass('upload', ref) }))
-  const up = await call(postForm('/upload', { statement: 'My account.', files: new File([PDF], 'letter.pdf') }, cookiesOf(launch)))
-  expect(await up.text()).toContain('Received')
-  return ref
-}
 const objects = async (prefix: string) => (await env.EVIDENCE.list({ prefix })).objects.length
 const post = (path: string, body: string) => call(new Request(ORIGIN + path, { method: 'POST', body, headers: { 'Content-Type': 'application/jose' } }))
 

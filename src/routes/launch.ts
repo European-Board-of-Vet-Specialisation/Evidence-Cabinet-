@@ -10,6 +10,7 @@ import { verifyFromMc, TYP, PASS_TTL, TrustError } from '../mc'
 import { ensureCase } from '../cases'
 import { staff, assigned, startCandidateSession, LAUNCH_COOKIE } from '../session'
 import { isCaseRef, isSub, nowIso, randomId, sha256, setCookie, clearCookie, cookie } from '../util'
+import { parseContext } from '../context'
 import { page, notice } from '../ui/layout'
 
 const redirect = (to: string, ...cookies: string[]) => {
@@ -43,10 +44,16 @@ export async function launch(req: Request, env: Env): Promise<Response> {
   if (!fresh.meta.changes) return refuse(env, 'it has already been used')
 
   if (act === 'upload') {
-    const c = await ensureCase(env, ref as string, p.sub)
+    const c = await ensureCase(env, ref as string, p.sub, parseContext(p.ctx))
     if (!c || c.state !== 'open') return page(env, 'Claim closed', notice('This claim is closed. Its evidence has been deleted.'))
     if (c.candidate_sub && c.candidate_sub !== p.sub) return refuse(env, 'it is for someone else')
     return redirect('/upload', await startCandidateSession(env, p.sub, ref as string))
+  }
+
+  // A review pass carries My College's current decision context for the case.
+  if (act === 'review') {
+    const c = await ensureCase(env, ref as string, null, parseContext(p.ctx))
+    if (!c || c.state !== 'open') return page(env, 'Claim closed', notice('This case has been closed and its evidence deleted.'))
   }
 
   // review / inbox: hold the pass for ten minutes while the reviewer signs in, if they must.

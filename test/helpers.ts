@@ -85,3 +85,26 @@ export function mockMc(answer: (body: Record<string, unknown>) => { status: numb
 
 export const PDF = new TextEncoder().encode('%PDF-1.7\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n')
 export const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13])
+
+/** A College user with a live session. */
+export async function person(opts: { sub?: string | null; admin?: boolean; finalise?: boolean; retain?: boolean; name?: string } = {}) {
+  const { startStaffSession } = await import('../src/session')
+  const p = await env.DB.prepare('INSERT INTO people (sub, display_name, is_admin, can_finalise, can_retain, created_at) VALUES (?, ?, ?, ?, ?, ?) RETURNING id')
+    .bind(opts.sub === undefined ? 'p_' + crypto.randomUUID().replace(/-/g, '').slice(0, 24) : opts.sub, opts.name ?? 'Reviewer', opts.admin ? 1 : 0, opts.finalise ? 1 : 0, opts.retain ? 1 : 0, new Date().toISOString()).first<{ id: number }>()
+  const cookie = (await startStaffSession(env, p!.id)).split(';')[0]!
+  const sub = await env.DB.prepare('SELECT sub FROM people WHERE id = ?').bind(p!.id).first<string>('sub')
+  return { id: p!.id, cookie, sub }
+}
+export const assign = (ref: string, personId: number) =>
+  env.DB.prepare('INSERT INTO assignments (case_ref, person_id, assigned_at) VALUES (?, ?, ?)').bind(ref, personId, new Date().toISOString()).run()
+
+/** A case with one submission (statement + a PDF), uploaded by the candidate through a pass. */
+export async function caseWithEvidence(ctx: Record<string, unknown> | null = null) {
+  const ref = newRef()
+  const launch = await call(postForm('/launch', { pass: await pass('upload', ref, ctx ? { ctx } : {}) }))
+  const up = await call(postForm('/upload', { name: 'Test Candidate', statement: 'My account.', files: new File([PDF], 'letter.pdf') }, cookiesOf(launch)))
+  if (!(await up.text()).includes('Received')) throw new Error('upload failed')
+  return ref
+}
+export const get = (path: string, cookie = '', init: RequestInit & { cf?: Record<string, unknown> } = {}) =>
+  call(new Request(ORIGIN + path, { ...init, headers: { ...(cookie ? { cookie } : {}), ...(init.headers as Record<string, string> ?? {}) } }))

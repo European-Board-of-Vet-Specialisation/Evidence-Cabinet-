@@ -11,14 +11,20 @@ export interface CaseRow {
   retain_until: string | null; retain_reason: string | null; retain_by: number | null
   created_at: string; last_activity_at: string; reminded_retention_at: string | null; reminded_deletion_at: string | null
   disposed_at: string | null; disposed_why: string | null
+  context: string | null; candidate_name: string | null
 }
 
 export const getCase = (env: Env, ref: string) => env.DB.prepare('SELECT * FROM cases WHERE case_ref = ?').bind(ref).first<CaseRow>()
 
 /** First contact for a case: an upload pass. Idempotent; a disposed case is not revived. */
-export async function ensureCase(env: Env, ref: string, sub: string): Promise<CaseRow | null> {
+export async function ensureCase(env: Env, ref: string, sub: string | null, context: unknown = null): Promise<CaseRow | null> {
   const now = nowIso()
-  await env.DB.prepare('INSERT INTO cases (case_ref, candidate_sub, created_at, last_activity_at) VALUES (?, ?, ?, ?) ON CONFLICT(case_ref) DO NOTHING').bind(ref, sub, now, now).run()
+  const ctx = context ? JSON.stringify(context) : null
+  await env.DB.batch([
+    env.DB.prepare('INSERT INTO cases (case_ref, candidate_sub, created_at, last_activity_at, context) VALUES (?, ?, ?, ?, ?) ON CONFLICT(case_ref) DO NOTHING').bind(ref, sub, now, now, ctx),
+    // The candidate is whoever first opened it to upload; the context is My College's latest.
+    env.DB.prepare('UPDATE cases SET candidate_sub = COALESCE(candidate_sub, ?), context = COALESCE(?, context) WHERE case_ref = ? AND state = \'open\'').bind(sub, ctx, ref),
+  ])
   return getCase(env, ref)
 }
 
@@ -99,7 +105,7 @@ export async function dispose(env: Env, ref: string, why: DisposeWhy): Promise<b
     env.DB.prepare('DELETE FROM view_log WHERE case_ref = ?').bind(ref),
     env.DB.prepare('DELETE FROM assignments WHERE case_ref = ?').bind(ref),
     env.DB.prepare('DELETE FROM candidate_sessions WHERE case_ref = ?').bind(ref),
-    env.DB.prepare('UPDATE cases SET state = \'disposed\', candidate_sub = NULL, retain_reason = NULL, retain_until = NULL, disposed_at = ?, disposed_why = ? WHERE case_ref = ?').bind(at, why, ref),
+    env.DB.prepare('UPDATE cases SET state = \'disposed\', candidate_sub = NULL, candidate_name = NULL, context = NULL, retain_reason = NULL, retain_until = NULL, disposed_at = ?, disposed_why = ? WHERE case_ref = ?').bind(at, why, ref),
     queueEvent(env, 'evidence.deleted', { case_ref: ref, version: 0, status: 'deleted', at }),
   ])
   return true

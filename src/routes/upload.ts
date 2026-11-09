@@ -33,6 +33,8 @@ export async function uploadPage(req: Request, env: Env, message = ''): Promise<
 </div>
 ${await receipts(env, me.case_ref)}
 <form class="card" method="post" action="/upload" enctype="multipart/form-data">
+  <label for="name">Your name</label>
+  <input id="name" name="name" type="text" maxlength="120" required value="${esc(c.candidate_name ?? '')}" autocomplete="name">
   <label for="statement">Your account</label>
   <p class="muted">What happened and how it affected you. ${esc(env.COLLEGE)} reads this with your documents.</p>
   <textarea id="statement" name="statement" maxlength="${MAX_STATEMENT}" required></textarea>
@@ -51,6 +53,8 @@ export async function uploadPost(req: Request, env: Env, ctx: ExecutionContext):
 
   const form = await req.formData().catch(() => null)
   if (!form) return uploadPage(req, env, notice('The upload did not arrive complete. Try again.', 'bad'))
+  const name = String(form.get('name') ?? '').trim().slice(0, 120)
+  if (!name) return uploadPage(req, env, notice('Enter your name, so the College knows whose claim this is.', 'bad'))
   const statement = String(form.get('statement') ?? '').trim()
   if (!statement) return uploadPage(req, env, notice('Write your account before sending.', 'bad'))
   if (statement.length > MAX_STATEMENT) return uploadPage(req, env, notice('Your account is too long.', 'bad'))
@@ -89,6 +93,7 @@ export async function uploadPost(req: Request, env: Env, ctx: ExecutionContext):
     env.DB.prepare('INSERT INTO evidence_versions (case_ref, version, statement, complete, created_at, completed_at) VALUES (?, ?, ?, 1, ?, ?)').bind(me.case_ref, version, statement, now, now),
     ...ids.map((f, i) => env.DB.prepare('INSERT INTO files (id, case_ref, version, kind, size, label, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(f.id, me.case_ref, version, f.kind, f.size, label(i + 1), now)),
     touchStmt(env, me.case_ref),
+    env.DB.prepare('UPDATE cases SET candidate_name = ? WHERE case_ref = ?').bind(name, me.case_ref),
     queueEvent(env, 'evidence.received', { case_ref: me.case_ref, version, status: 'received', at: now }),
   ]) } catch {
     // Another submission took this version number at the same moment: keep nothing of this one.

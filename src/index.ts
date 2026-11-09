@@ -1,44 +1,87 @@
-// The cabinet Worker. Routes:
+// The cabinet Worker.
 //
-//   POST /launch, GET /launch/continue   passes from My College (routes/launch)
-//   POST /api/signals, POST /api/pair    My College → cabinet (routes/signals, routes/pair)
-//   GET|POST /upload                     the candidate's page (routes/upload)
-//   scheduled                            the daily job (retention) and event retries
+//   My College → cabinet   POST /launch, GET /launch/continue, POST /api/signals, POST /api/pair
+//   candidate              GET|POST /upload
+//   College users          /signin, /enrol/:token, /cases, /case/:ref (+ comments, viewer,
+//                          decision, retention), /admin…, /setup
+//   scheduled              the daily job (retention, reminders, summary) and event retries
 
 import type { Env } from './env'
 import { launch, launchContinue } from './routes/launch'
 import { signals } from './routes/signals'
 import { pair } from './routes/pair'
 import { uploadPage, uploadPost } from './routes/upload'
+import { enrolPage, signinPage, signout, registerOptions, registerVerify, authOptions, authVerify, setupPage, setupPost } from './routes/auth'
+import { caseList, caseView, postComment, correctComment } from './routes/cases'
+import { viewerPage, viewerRaw } from './routes/viewer'
+import { decisionPage, saveDraft, finalise, retryDecision } from './routes/decision'
+import { adminHome, addPerson, personPage, personPost, adminCase, assignPost, retainPost, retryEventPost } from './routes/admin'
 import { runDaily } from './retention'
-import { deliverDue } from './outbox'
-import { page, notice } from './ui/layout'
+import { page, notice, SECURITY_HEADERS } from './ui/layout'
+import { PASSKEY_JS } from './static/passkey'
+import { VIEWER_JS } from './static/viewer'
 
-// A form post from another site may only reach /launch, and only with a pass. Everything else
+// A form post from another site may reach /launch only, and only with a pass. Everything else
 // that changes state must come from this origin.
-function sameOrigin(req: Request, env: Env): boolean {
-  const o = req.headers.get('origin')
-  return !o || o === env.CABINET_ORIGIN
-}
+const sameOrigin = (req: Request, env: Env) => { const o = req.headers.get('origin'); return !o || o === env.CABINET_ORIGIN }
+const js = (src: string) => new Response(src, { headers: { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'public, max-age=3600', ...SECURITY_HEADERS } })
+const REF = '(ec-[a-z0-9]{26})'
+
+type Handler = (req: Request, env: Env, ctx: ExecutionContext, m: RegExpMatchArray) => Promise<Response> | Response
+const routes: Array<[string, RegExp, Handler]> = [
+  ['POST', /^\/launch$/, (r, e) => launch(r, e)],
+  ['GET', /^\/launch\/continue$/, (r, e) => launchContinue(r, e)],
+  ['POST', /^\/api\/signals$/, (r, e, c) => signals(r, e, c)],
+  ['POST', /^\/api\/pair$/, (r, e) => pair(r, e)],
+  ['GET', /^\/static\/passkey\.js$/, () => js(PASSKEY_JS)],
+  ['GET', /^\/static\/viewer\.js$/, () => js(VIEWER_JS)],
+  ['GET', /^\/upload$/, (r, e) => uploadPage(r, e)],
+  ['POST', /^\/upload$/, (r, e, c) => uploadPost(r, e, c)],
+  ['GET', /^\/setup$/, (r, e) => setupPage(r, e)],
+  ['POST', /^\/setup$/, (r, e) => setupPost(r, e)],
+  ['GET', /^\/signin$/, (r, e) => signinPage(r, e)],
+  ['POST', /^\/signout$/, (r, e) => signout(r, e)],
+  ['GET', /^\/enrol\/([A-Za-z0-9_-]+)$/, (_r, e, _c, m) => enrolPage(e, m[1]!)],
+  ['POST', /^\/api\/passkey\/register\/options$/, (r, e) => registerOptions(r, e)],
+  ['POST', /^\/api\/passkey\/register\/verify$/, (r, e) => registerVerify(r, e)],
+  ['POST', /^\/api\/passkey\/auth\/options$/, (_r, e) => authOptions(e)],
+  ['POST', /^\/api\/passkey\/auth\/verify$/, (r, e) => authVerify(r, e)],
+  ['GET', /^\/cases$/, (r, e) => caseList(r, e)],
+  ['GET', new RegExp(`^/case/${REF}$`), (r, e, _c, m) => caseView(r, e, m[1]!)],
+  ['POST', new RegExp(`^/case/${REF}/comment$`), (r, e, c, m) => postComment(r, e, c, m[1]!)],
+  ['POST', new RegExp(`^/case/${REF}/comment/(\\d+)/correct$`), (r, e, c, m) => correctComment(r, e, c, m[1]!, Number(m[2]))],
+  ['GET', new RegExp(`^/case/${REF}/file/([0-9a-f-]{36})$`), (r, e, _c, m) => viewerPage(r, e, m[1]!, m[2]!)],
+  ['GET', new RegExp(`^/case/${REF}/file/([0-9a-f-]{36})/raw$`), (r, e, _c, m) => viewerRaw(r, e, m[1]!, m[2]!)],
+  ['GET', new RegExp(`^/case/${REF}/decision$`), (r, e, _c, m) => decisionPage(r, e, m[1]!)],
+  ['POST', new RegExp(`^/case/${REF}/decision/draft$`), (r, e, _c, m) => saveDraft(r, e, m[1]!)],
+  ['POST', new RegExp(`^/case/${REF}/decision/finalise$`), (r, e, c, m) => finalise(r, e, c, m[1]!)],
+  ['POST', new RegExp(`^/case/${REF}/decision/(\\d+)/retry$`), (r, e, c, m) => retryDecision(r, e, c, m[1]!, Number(m[2]))],
+  ['POST', new RegExp(`^/case/${REF}/retain$`), (r, e, _c, m) => retainPost(r, e, m[1]!)],
+  ['GET', /^\/admin$/, (r, e) => adminHome(r, e)],
+  ['POST', /^\/admin\/person$/, (r, e) => addPerson(r, e)],
+  ['GET', /^\/admin\/person\/(\d+)$/, (r, e, _c, m) => personPage(r, e, Number(m[1]))],
+  ['POST', /^\/admin\/person\/(\d+)$/, (r, e, _c, m) => personPost(r, e, Number(m[1]))],
+  ['GET', new RegExp(`^/admin/case/${REF}$`), (r, e, _c, m) => adminCase(r, e, m[1]!)],
+  ['POST', new RegExp(`^/admin/case/${REF}/assign$`), (r, e, _c, m) => assignPost(r, e, m[1]!)],
+  ['POST', /^\/admin\/event\/(\d+)\/retry$/, (r, e, c, m) => retryEventPost(r, e, c, Number(m[1]))],
+  ['GET', /^\/$/, (r) => new Response(null, { status: 303, headers: { Location: '/cases' } })],
+]
 
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    const url = new URL(req.url)
-    const { pathname: path } = url
-    const m = req.method
+    const path = new URL(req.url).pathname
     try {
-      if (m === 'POST' && path === '/launch') return await launch(req, env)
-      if (m === 'GET' && path === '/launch/continue') return await launchContinue(req, env)
-      if (m === 'POST' && path === '/api/signals') return await signals(req, env, ctx)
-      if (m === 'POST' && path === '/api/pair') return await pair(req, env)
-      if (m === 'POST' && !sameOrigin(req, env)) return page(env, 'Refused', notice('That request came from another site.', 'bad'), 403)
-      if (m === 'GET' && path === '/upload') return await uploadPage(req, env)
-      if (m === 'POST' && path === '/upload') return await uploadPost(req, env, ctx)
-      if (m === 'GET' && path === '/') return page(env, 'Evidence cabinet', notice(`Open a claim from My College to use the ${env.COLLEGE} evidence cabinet.`))
+      const exempt = path === '/launch' || path.startsWith('/api/signals') || path === '/api/pair'
+      if (req.method === 'POST' && !exempt && !sameOrigin(req, env)) return page(env, 'Refused', notice('That request came from another site.', 'bad'), 403)
+      for (const [method, re, h] of routes) {
+        if (method !== req.method) continue
+        const m = path.match(re)
+        if (m) return await h(req, env, ctx, m)
+      }
       return page(env, 'Not found', notice('There is nothing here.'), 404)
     } catch (e) {
       // Never the request, the body or a token: a short code only.
-      console.error('[cabinet] error', path, e instanceof Error ? e.name : 'unknown')
+      console.error('[cabinet] error', path.replace(/ec-[a-z0-9]{26}/g, 'ec-…'), e instanceof Error ? e.name : 'unknown')
       return page(env, 'Something went wrong', notice('Try again. If it keeps happening, tell your College administrator.', 'bad'), 500)
     }
   },
@@ -47,5 +90,3 @@ export default {
     ctx.waitUntil(runDaily(env).then(t => console.log('[cabinet] daily', JSON.stringify(t))).catch(e => console.error('[cabinet] daily failed', e instanceof Error ? e.name : 'unknown')))
   },
 } satisfies ExportedHandler<Env>
-
-export { deliverDue }

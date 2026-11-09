@@ -29,10 +29,24 @@ Built and tested:
   daily; refusals stop and show why.
 - **Daily job.** The 18-month rule with its reminder, retention flags and their lapse, the
   six-monthly summary, housekeeping.
+- **Sign-in.** Passkeys only, enrolled with a one-time link from an administrator; the first
+  administrator through the setup wizard and the SETUP_TOKEN secret. No passwords, no email.
+- **Setup wizard** (`/setup`). Checks the bindings, the address, the College code and the
+  signing key, and shows the values to paste into My College.
+- **Cases.** A reviewer's assigned cases, unread activity first; one case with its evidence and
+  discussion together. Comments record author and time; corrections keep the original. A comment
+  asks My College to email the other assigned reviewers, naming no one and no case.
+- **Viewer.** PDF.js in the browser, no download or print control, the reviewer's name and the
+  time over every page; bytes only to the viewer, from an allowed country, every view logged.
+- **Decisions.** Any assigned reviewer drafts; the people the College designates finalise after
+  seeing exactly what My College will receive. The rationale stays here. Corrections and appeal
+  outcomes are new versions linked to the one before. My College's acknowledgement is shown, and
+  an administrator re-sends without the chair re-entering anything.
+- **Administration.** People and enrolment links, assignments and revocation, retention flags,
+  events My College has not accepted, six-monthly summaries. Removing a person ends their
+  sessions, assignments and passkeys at once; the last administrator cannot be removed.
 
-Next: passkey sign-in and the setup wizard; the case list and case view with discussion; the
-evidence viewer (watermark, view log, country check); the decision screen; administration
-(people, assignments, retention flags, failed events).
+Next: an end-to-end run against My College in test mode, then a pilot deployment.
 
 ## Develop
 

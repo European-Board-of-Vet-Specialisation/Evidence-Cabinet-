@@ -6,12 +6,13 @@
   "license": "UNLICENSED",
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
+    "dev": "npm run assets && wrangler dev",
+    "deploy": "npm run assets && wrangler deploy",
     "migrate": "wrangler d1 migrations apply cabinet --remote",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "keygen": "node scripts/keygen.mjs"
+    "keygen": "node scripts/keygen.mjs",
+    "assets": "node scripts/copy-pdfjs.mjs"
   },
   "dependencies": {
     "@simplewebauthn/server": "14.0.3",
@@ -20,6 +21,7 @@
   "devDependencies": {
     "@cloudflare/vitest-plugin": "1.4.7",
     "@cloudflare/workers-types": "5.20261025.1",
+    "pdfjs-dist": "6.4.299",
     "typescript": "7.0.2",
     "vitest": "4.1.12",
     "wrangler": "4.152.0"
