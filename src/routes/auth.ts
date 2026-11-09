@@ -170,6 +170,17 @@ ${row(env.COLLEGE !== 'CHANGE-ME' && /^[A-Z0-9_-]{2,20}$/.test(env.COLLEGE), `Co
 ${row(!!pub, 'College signing key set', 'Run npm run keygen and put the private key in the COLLEGE_SIGNING_KEY secret.')}
 </table>
 <p class="muted">Confirm EU jurisdiction for both in the Cloudflare dashboard: the Worker cannot read it from its bindings.</p></div>
+${pub ? '' : `<div class="card"><h2>Make the College signing key</h2>
+<p>The cabinet signs everything it sends to My College with a key that belongs to ${esc(env.COLLEGE)}. Make it here, in your own browser. It is never sent to the cabinet or to EBVS.</p>
+<p><button id="keygen" type="button">Make the key</button></p><p id="keystatus" class="muted" role="status"></p>
+<div id="keyout" hidden>
+  <label for="privkey">Private key (shown once)</label><textarea id="privkey" readonly rows="3" style="font-family:monospace;font-size:12px"></textarea>
+  <p><button id="copykey" type="button" class="secondary">Copy</button></p>
+  <ol><li>In the Cloudflare dashboard open <b>Workers &amp; Pages</b> → this cabinet → <b>Settings</b> → <b>Variables and Secrets</b> → <b>Add</b>.</li>
+  <li>Type <b>Secret</b>, name <b>COLLEGE_SIGNING_KEY</b>, paste the key, and deploy.</li>
+  <li>Reload this page. It then shows the public half for My College.</li></ol>
+  <p class="muted">Keep no other copy. If it is lost, make a new one here and paste the new public half into My College.</p>
+</div></div>`}
 ${pub ? `<div class="card"><h2>For My College</h2><p>Paste these into My College → College settings → Evidence handling, under <b>A secure evidence cabinet</b>.</p>
 <label>Cabinet address</label><input type="text" readonly value="${esc(env.CABINET_ORIGIN)}">
 <label>Cabinet public key</label><input type="text" readonly value="${esc(JSON.stringify(pub.jwk))}">
@@ -180,7 +191,7 @@ export async function setupPage(req: Request, env: Env, message = ''): Promise<R
   if (await hasAdmin(env)) {
     const me = await staff(req, env)
     if (!me?.is_admin) return page(env, 'Set up', notice('This cabinet is set up. Sign in to manage it.'), 200, { nav: '<a href="/signin">Sign in</a>' })
-    return page(env, 'Set up', await checks(env), 200, { nav: '<a href="/cases">Cases</a> <a href="/admin">Administration</a>' })
+    return page(env, 'Set up', await checks(env), 200, { nav: '<a href="/cases">Cases</a> <a href="/admin">Administration</a>', script: '/static/keygen.js' })
   }
   return page(env, 'Set up this cabinet', `${message}${await checks(env)}
 <form class="card" method="post" action="/setup">
@@ -191,7 +202,7 @@ export async function setupPage(req: Request, env: Env, message = ''): Promise<R
   <label for="sub">Your ID from My College (optional now)</label><input id="sub" name="sub" type="text" placeholder="p_…" maxlength="60">
   <p class="muted">My College lists it under College settings → Evidence handling → Reviewer IDs.</p>
   <p><button type="submit">Continue to create your passkey</button></p>
-</form>`)
+</form>`, 200, { script: '/static/keygen.js' })
 }
 
 export async function setupPost(req: Request, env: Env): Promise<Response> {

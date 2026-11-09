@@ -44,6 +44,6 @@ binding = "EVIDENCE"
 bucket_name = "cabinet-evidence"
 jurisdiction = "eu"
 
-# PDF.js for the evidence viewer (copied in by `npm run assets`). Public library code only.
+# PDF.js for the evidence viewer (copied in by `npm run build`). Public library code only.
 [assets]
 directory = "./public"

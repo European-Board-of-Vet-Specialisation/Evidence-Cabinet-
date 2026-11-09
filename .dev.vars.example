@@ -1,0 +1,3 @@
+# Asked for on the Deploy to Cloudflare page. COLLEGE_SIGNING_KEY is NOT asked for here:
+# the cabinet's /setup page makes it in your browser and tells you where to put it.
+SETUP_TOKEN=make-up-a-long-random-string-of-at-least-20-characters

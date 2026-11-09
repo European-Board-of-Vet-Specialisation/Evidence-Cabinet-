@@ -20,6 +20,7 @@ import { runDaily } from './retention'
 import { page, notice, SECURITY_HEADERS } from './ui/layout'
 import { PASSKEY_JS } from './static/passkey'
 import { VIEWER_JS } from './static/viewer'
+import { KEYGEN_JS } from './static/keygen'
 import { setLocalHttp } from './util'
 
 // A form post from another site may reach /launch only, and only with a pass. Everything else
@@ -42,6 +43,7 @@ const routes: Array<[string, RegExp, Handler]> = [
   ['POST', /^\/api\/pair$/, (r, e) => pair(r, e)],
   ['GET', /^\/static\/passkey\.js$/, () => js(PASSKEY_JS)],
   ['GET', /^\/static\/viewer\.js$/, () => js(VIEWER_JS)],
+  ['GET', /^\/static\/keygen\.js$/, () => js(KEYGEN_JS)],
   ['GET', /^\/upload$/, (r, e) => uploadPage(r, e)],
   ['POST', /^\/upload$/, (r, e, c) => uploadPost(r, e, c)],
   ['GET', /^\/setup$/, (r, e) => setupPage(r, e)],

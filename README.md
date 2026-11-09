@@ -55,26 +55,51 @@ There is no global install: everything runs through npm.
 ```sh
 npm install
 npm test           # runs inside the Workers runtime with a local D1 and R2
+npm run dev        # the cabinet on http://localhost:8787 (put SETUP_TOKEN in .dev.vars)
 npm run typecheck
 ```
 
 ## Set up for a College
 
-1. Create the College's Cloudflare account and a Git organisation. Name a second administrator.
-2. `npx wrangler d1 create cabinet --jurisdiction eu` and paste the ID into `wrangler.toml`.
-3. `npx wrangler r2 bucket create cabinet-evidence --jurisdiction eu`
-4. The lifecycle backstop (spec RET-02): delete objects under `cases/` 548 days after upload.
-   `npx wrangler r2 bucket lifecycle add cabinet-evidence backstop cases/ --expire-days 548 --jurisdiction eu`
-5. Set `COLLEGE`, `CABINET_ORIGIN` and `PRIVACY_NOTICE_URL` in `wrangler.toml`.
-6. `npm run keygen`, then `npx wrangler secret put COLLEGE_SIGNING_KEY` with the private key.
-7. `npx wrangler secret put SETUP_TOKEN` with a long random string.
-8. `npm run migrate && npm run deploy`
-9. Open `/setup` on the cabinet, enter the setup token and create the first administrator's passkey.
-   Then delete the secret: `npx wrangler secret delete SETUP_TOKEN`. Setup only ever works on an
-   empty cabinet.
-10. In My College → College settings → Evidence handling: choose *A secure evidence cabinet*,
-    enter the cabinet's address and the **public** key, run the signed test and switch it on.
-11. In the cabinet, add a second administrator.
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/European-Board-of-Vet-Specialisation/Evidence-Cabinet-)
+
+Do this signed in to the **College's own** Cloudflare account and the College's own GitHub or
+GitLab account. EBVS needs no access to either.
+
+1. **Press the button.** Cloudflare copies this code into a new repository in the College's
+   GitHub or GitLab, and creates the database and the evidence bucket.
+   - Name the Worker, for example `ecvsmr-evidence-cabinet`.
+   - **SETUP_TOKEN:** make up a long random string (20+ characters) and keep it for step 5.
+   - Accept the build and deploy commands it suggests (`npm run build`, `npm run deploy`).
+2. **Check both stores are in the EU** (Storage & Databases): the D1 database and the R2 bucket
+   must show *EU* jurisdiction. If either does not, nothing is in it yet: create an EU one in the
+   dashboard, put its name (and, for D1, its ID) into `wrangler.toml` in the College's
+   repository, and delete the other.
+3. **Edit `wrangler.toml`** in the College's repository (the GitHub or GitLab web editor is
+   fine) and set `COLLEGE` (e.g. `ECVSMR`), `CABINET_ORIGIN` (the address Cloudflare gave the
+   Worker, e.g. `https://ecvsmr-evidence-cabinet.<you>.workers.dev`, no trailing slash) and
+   `PRIVACY_NOTICE_URL`. Saving redeploys it.
+4. **The 18-month backstop** (spec RET-02): R2 → the bucket → Settings → Object lifecycle rules →
+   add a rule for prefix `cases/` that deletes objects 548 days after upload.
+5. **Open `/setup` on the cabinet.**
+   - Make the **College signing key** there, in your browser, and add it as the secret
+     `COLLEGE_SIGNING_KEY` (Workers & Pages → the cabinet → Settings → Variables and Secrets).
+     Reload `/setup`.
+   - Enter the setup token and create the first administrator's **passkey**.
+   - Then delete the `SETUP_TOKEN` secret. Setup only ever works on an empty cabinet.
+6. **Pair with My College:** College settings → Evidence handling → *A secure evidence cabinet*.
+   Paste the cabinet address and the public key from `/setup`, run the signed test, switch on.
+7. **Add a second administrator** in the cabinet's Administration page.
+
+Every check on `/setup` should then be green, apart from anything you have chosen to leave.
+
+### By hand, with Wrangler
+
+`npx wrangler d1 create cabinet --jurisdiction eu` (ID into `wrangler.toml`),
+`npx wrangler r2 bucket create cabinet-evidence --jurisdiction eu`, the lifecycle rule
+(`npx wrangler r2 bucket lifecycle add cabinet-evidence backstop cases/ --expire-days 548 --jurisdiction eu`),
+`npx wrangler secret put SETUP_TOKEN`, then `npm run deploy`, and steps 3, 5–7 above.
+`npm run keygen` makes the signing key on a computer instead of in the browser.
 
 ## Rotating the College's signing key
 

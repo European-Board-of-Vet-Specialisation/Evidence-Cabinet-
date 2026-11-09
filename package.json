@@ -6,13 +6,13 @@
   "license": "AGPL-3.0-only",
   "type": "module",
   "scripts": {
-    "dev": "npm run assets && wrangler dev",
-    "deploy": "npm run assets && wrangler deploy",
-    "migrate": "wrangler d1 migrations apply cabinet --remote",
+    "dev": "npm run build && wrangler dev",
+    "deploy": "npm run build && wrangler d1 migrations apply DB --remote && wrangler deploy",
+    "migrate": "wrangler d1 migrations apply DB --remote",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "keygen": "node scripts/keygen.mjs",
-    "assets": "node scripts/copy-pdfjs.mjs"
+    "build": "node scripts/copy-pdfjs.mjs"
   },
   "dependencies": {
     "@simplewebauthn/server": "14.0.3",
@@ -29,5 +29,18 @@
   "allowScripts": {
     "esbuild@0.28.2": true,
     "workerd@1.20261019.1": true
+  },
+  "cloudflare": {
+    "bindings": {
+      "SETUP_TOKEN": {
+        "description": "A long random string you make up (at least 20 characters). You type it once on the cabinet's **/setup** page to create the first administrator. Delete this secret afterwards."
+      },
+      "DB": {
+        "description": "The cabinet's database. **Choose EU jurisdiction** if you are asked, and check it after deploying (Storage & Databases \u2192 D1)."
+      },
+      "EVIDENCE": {
+        "description": "The evidence bucket, EU jurisdiction. Check after deploying (R2 \u2192 bucket \u2192 Settings)."
+      }
+    }
   }
 }
