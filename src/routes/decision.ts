@@ -137,9 +137,26 @@ async function preview(req: Request, env: Env, ref: string): Promise<Response> {
   if (d.outcome === 'not_upheld' && (JSON.parse(d.adjustments) as Adjustment[]).length) return decisionPage(req, env, ref, notice('A claim not upheld grants no adjustment. Untick the adjustments.', 'bad'))
   const latest = await env.DB.prepare('SELECT MAX(version) AS v FROM decisions WHERE case_ref = ?').bind(ref).first<{ v: number | null }>()
   const body = decisionPayload({ ...d, version: (latest?.v ?? 0) + 1 }, '(the time you finalise)')
+  // Every field My College receives, in words, built from the same object the event sends.
+  const ctx = parseContext(g.c.context ? JSON.parse(g.c.context) : null)
+  const prior = (body.version ?? 1) - 1
+  const TYPE: Record<string, string> = { initial: 'the first decision', correction: `a correction of version ${prior}`, appeal: `the outcome of an appeal against version ${prior}` }
+  const DATE: Record<string, string> = { effective_from: 'Effective from' }
+  const day = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
+  const row = (k: string, v: string) => `<tr><th style="width:34%">${esc(k)}</th><td>${v}</td></tr>`
+  const dates = Object.entries(body.dates)
   return page(env, 'Check before finalising', `
-<p>This is everything My College will receive. The rationale and the evidence considered stay here.</p>
-<pre class="card" style="white-space:pre-wrap;font-size:13px">${esc(JSON.stringify(body, null, 2))}</pre>
+<div class="card"><h2>My College will record</h2><table>
+${row('Outcome', `<b>${body.outcome === 'upheld' ? 'Upheld' : 'Not upheld'}</b>`)}
+${row('This decision is', `${esc(TYPE[body.decision_type] ?? body.decision_type)} (version ${body.version})`)}
+${row('Adjustments', body.adjustments.length ? body.adjustments.map(a => `<b>${esc(describe(a as Adjustment, ctx))}</b>`).join('<br>') : 'None')}
+${dates.length ? dates.map(([k, v]) => row(DATE[k] ?? k, esc(day(v)))).join('') : row('Dates', 'None')}
+${row('Case', esc(ref.slice(3, 11).toUpperCase()))}
+</table>
+<p class="muted">My College records the time you finalise. It applies the adjustments (for example a recertification extension, or extra examination time) and sends the candidate the outcome with your College's appeals notice.</p></div>
+<div class="card"><h2>Stays in the cabinet</h2><p>Your rationale, the evidence considered, the discussion and the candidate's account. None of it is sent.</p></div>
+<details class="card"><summary class="muted">The exact message, for administrators</summary><pre style="white-space:pre-wrap;font-size:12px">${esc(JSON.stringify(body, null, 2))}</pre></details>
+<p class="muted">Once finalised, this version is locked. A mistake is put right with a new version, and the candidate is told again.</p>
 <form method="post" action="/case/${esc(ref)}/decision/finalise" class="row">
   <input type="hidden" name="draft" value="${d.id}"><input type="hidden" name="version" value="${body.version}">
   <button type="submit">Finalise version ${body.version}</button><a class="btn secondary" href="/case/${esc(ref)}/decision">Back to the draft</a>

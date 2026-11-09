@@ -90,6 +90,8 @@ describe('decisions (spec §6.1)', () => {
     expect(await draft.text()).toContain('Draft saved')
     expect(await (await call(postForm(`/case/${ref}/decision/draft`, { ...form, go: 'preview' }, reviewer.cookie))).text()).toContain('designates')
     const preview = await (await call(postForm(`/case/${ref}/decision/draft`, { ...form, go: 'preview' }, chair.cookie))).text()
+    expect(preview).toContain('Deferral to Diet 2028')
+    expect(preview).toContain('My College will record')
     expect(preview).toContain('&quot;cycle_id&quot;: 12')
     expect(preview).not.toContain('Hospital letter')
     const draftId = await env.DB.prepare('SELECT id FROM decisions WHERE case_ref = ? AND version IS NULL').bind(ref).first<number>('id')
