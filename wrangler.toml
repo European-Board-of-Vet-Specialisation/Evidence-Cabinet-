@@ -1,0 +1,43 @@
+# The College's evidence cabinet. Everything here runs in the College's own Cloudflare account.
+#
+# Before the first deploy (the setup guide in README.md walks through it):
+#   npx wrangler d1 create cabinet --jurisdiction eu        → paste the database_id below
+#   npx wrangler r2 bucket create cabinet-evidence --jurisdiction eu
+#   npx wrangler secret put COLLEGE_SIGNING_KEY             → the private JWK from `npm run keygen`
+#   npx wrangler secret put SETUP_TOKEN                     → a long random string, used once
+#   npm run migrate && npm run deploy
+
+name = "evidence-cabinet"
+main = "src/index.ts"
+compatibility_date = "2026-10-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Daily: the retention rule, reminders and the six-monthly summary. The event outbox is retried
+# here too, and after every request that queues something.
+[triggers]
+crons = ["17 3 * * *"]
+
+[vars]
+# The College code exactly as My College knows it, e.g. "ECVN".
+COLLEGE = "CHANGE-ME"
+# This cabinet's public origin, no path, e.g. "https://evidence.your-college.org".
+CABINET_ORIGIN = "https://evidence.example.org"
+# My College. Change only for a test deployment.
+MC_BASE = "https://help.ebvs.eu"
+MC_ISSUER = "https://help.ebvs.eu/ec"
+# Shown on the upload page. Write it with your data protection officer.
+PRIVACY_NOTICE_URL = "https://www.example.org/privacy"
+# Countries reviewers may view evidence from (ISO codes, comma-separated). Empty = no check.
+# The default is the EEA plus adequacy countries; see docs/spec.md §8.
+VIEW_COUNTRIES = "AT,BE,BG,HR,CY,CZ,DK,EE,FI,FR,DE,GR,HU,IS,IE,IT,LV,LI,LT,LU,MT,NL,NO,PL,PT,RO,SK,SI,ES,SE,AD,AR,CA,FO,GG,IL,IM,JP,JE,NZ,KR,CH,GB,UY"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "cabinet"
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
+
+[[r2_buckets]]
+binding = "EVIDENCE"
+bucket_name = "cabinet-evidence"
+jurisdiction = "eu"

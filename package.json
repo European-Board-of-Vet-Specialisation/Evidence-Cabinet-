@@ -1,0 +1,31 @@
+{
+  "name": "evidence-cabinet",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A College-owned evidence cabinet for extenuating-circumstances claims. Connects to My College; EBVS holds no key that can read it.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "migrate": "wrangler d1 migrations apply cabinet --remote",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "keygen": "node scripts/keygen.mjs"
+  },
+  "dependencies": {
+    "@simplewebauthn/server": "14.0.3",
+    "jose": "6.2.13"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "1.4.7",
+    "@cloudflare/workers-types": "5.20261025.1",
+    "typescript": "7.0.2",
+    "vitest": "4.1.12",
+    "wrangler": "4.152.0"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true,
+    "workerd@1.20261019.1": true
+  }
+}
