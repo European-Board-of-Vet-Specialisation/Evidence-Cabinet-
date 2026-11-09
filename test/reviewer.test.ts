@@ -146,4 +146,12 @@ describe('administration', () => {
     const outsider = await person({ retain: true })
     expect((await call(postForm(`/case/${ref}/retain`, { go: 'clear' }, outsider.cookie))).status).toBe(403)
   })
+  it('lets an administrator dispose of a case, which tells My College', async () => {
+    const ref = await caseWithEvidence()
+    const admin = await person({ admin: true })
+    expect(await (await call(postForm(`/admin/case/${ref}/dispose`, {}, admin.cookie))).text()).toContain('Tick the confirmation')
+    await call(postForm(`/admin/case/${ref}/dispose`, { confirm: '1' }, admin.cookie))
+    expect(await env.DB.prepare('SELECT state, disposed_why FROM cases WHERE case_ref = ?').bind(ref).first()).toEqual({ state: 'disposed', disposed_why: 'closed' })
+    expect((await outboxOf('evidence.deleted')).some(b => b.case_ref === ref)).toBe(true)
+  })
 })

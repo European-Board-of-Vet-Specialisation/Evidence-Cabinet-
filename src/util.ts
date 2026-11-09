@@ -24,14 +24,22 @@ export const isSub = (v: unknown): v is string => typeof v === 'string' && /^p_[
 
 export const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!))
 
+// Cookies are __Host- prefixed and Secure: bound to this origin, https only. A local test run on
+// http://localhost cannot set those, so there — and only there — the prefix and Secure are
+// dropped. Set per request from CABINET_ORIGIN (index.ts); any deployment is https.
+let localHttp = false
+export const setLocalHttp = (origin: string) => { localHttp = /^http:\/\/localhost(:\d+)?$/.test(origin) }
+const named = (name: string) => localHttp ? name.replace(/^__Host-/, '') : name
+const secure = () => localHttp ? '' : ' Secure;'
+
 export function cookie(req: Request, name: string): string | null {
-  const m = (req.headers.get('cookie') ?? '').split(/;\s*/).find(p => p.startsWith(`${name}=`))
-  return m ? decodeURIComponent(m.slice(name.length + 1)) : null
+  const n = named(name)
+  const m = (req.headers.get('cookie') ?? '').split(/;\s*/).find(p => p.startsWith(`${n}=`))
+  return m ? decodeURIComponent(m.slice(n.length + 1)) : null
 }
-/** __Host- cookies: Secure, path /, no Domain — bound to this origin only. */
 export const setCookie = (name: string, value: string, maxAgeSec: number) =>
-  `${name}=${encodeURIComponent(value)}; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=${maxAgeSec}`
-export const clearCookie = (name: string) => `${name}=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0`
+  `${named(name)}=${encodeURIComponent(value)}; Path=/;${secure()} HttpOnly; SameSite=Lax; Max-Age=${maxAgeSec}`
+export const clearCookie = (name: string) => `${named(name)}=; Path=/;${secure()} HttpOnly; SameSite=Lax; Max-Age=0`
 
 /** Every response is private and uncached; evidence most of all. */
-export const NO_STORE = { 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' }
+export const NO_STORE = { 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'same-origin' }

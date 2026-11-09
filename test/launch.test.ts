@@ -67,3 +67,16 @@ describe('review pass: the pass names, the sign-in admits (acceptance tests 3 an
     expect(cont.status).toBe(403)
   })
 })
+
+describe('cross-site protection', () => {
+  const req = (h: Record<string, string>) => call(new Request(ORIGIN + '/setup', { method: 'POST', body: new URLSearchParams({ token: 'x', name: 'y' }), headers: h }))
+  it('accepts this origin, and Origin: null when the browser marks it same-origin', async () => {
+    expect((await req({ origin: ORIGIN })).status).toBe(200)
+    expect((await req({ origin: 'null', 'sec-fetch-site': 'same-origin' })).status).toBe(200)
+  })
+  it('refuses another site, however it presents', async () => {
+    expect((await req({ origin: 'https://evil.test' })).status).toBe(403)
+    expect((await req({ origin: 'null', 'sec-fetch-site': 'cross-site' })).status).toBe(403)
+    expect((await req({ 'sec-fetch-site': 'same-site' })).status).toBe(403)
+  })
+})

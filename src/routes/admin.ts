@@ -7,7 +7,7 @@ import type { Env } from '../env'
 import { staff, assigned, type Person } from '../session'
 import { nav } from './cases'
 import { createEnrolment } from './auth'
-import { getCase, toHold, fromHold } from '../cases'
+import { getCase, toHold, fromHold, dispose } from '../cases'
 import { retryEvent, deliverDue } from '../outbox'
 import { flagUntil } from '../policy'
 import { page, notice } from '../ui/layout'
@@ -161,7 +161,25 @@ ${canRetain ? `<form method="post" action="/case/${esc(ref)}/retain">
   <label for="reason">${c.retain_until ? 'Renew for six months: reason' : 'Flag for six months: reason'}</label><input id="reason" name="reason" type="text" maxlength="300" required>
   <p class="row"><button type="submit" name="go" value="flag">${c.retain_until ? 'Renew the flag' : 'Flag for retention'}</button>${c.retain_until ? '<button class="secondary" type="submit" name="go" value="clear" formnovalidate>Remove the flag</button>' : ''}</p>
 </form>` : '<p class="muted">Only people allowed to retain cases can flag one.</p>'}
-</div><p><a href="/admin">Back</a></p>`, 200, { nav: nav(me) })
+</div>
+<h2>Dispose of the case</h2>
+<form class="card" method="post" action="/admin/case/${esc(ref)}/dispose">
+  <p>Once the appeal window has passed with no appeal, delete the evidence, the discussion, the drafts and the rationale now, and tell My College. This cannot be undone.</p>
+  ${c.ebvs_hold ? '<p class="muted">Not while EBVS holds it for an appeal.</p>' : `<label style="font-weight:400"><input type="checkbox" name="confirm" value="1" required> I confirm the College's retention policy allows deleting this case now.</label>
+  <p><button class="danger" type="submit">Dispose of the case</button></p>`}
+</form><p><a href="/admin">Back</a></p>`, 200, { nav: nav(me) })
+}
+
+/** Spec §6 step 9: the College disposes of a case under its retention policy. */
+export async function disposePost(req: Request, env: Env, ctx: ExecutionContext, ref: string): Promise<Response> {
+  const me = await admin(req, env); if (me instanceof Response) return me
+  const c = isCaseRef(ref) ? await getCase(env, ref) : null
+  if (!c || c.state !== 'open') return adminHome(req, env, notice('That case is already closed.', 'bad'))
+  if (c.ebvs_hold) return adminCase(req, env, ref, notice('EBVS holds this case for an appeal. It is deleted when EBVS releases it.', 'bad'))
+  if ((await req.formData()).get('confirm') !== '1') return adminCase(req, env, ref, notice('Tick the confirmation first.', 'bad'))
+  const done = await dispose(env, ref, 'closed')
+  ctx.waitUntil(deliverDue(env))
+  return adminHome(req, env, done ? notice('The case is disposed of. My College is being told.', 'good') : notice('Some files could not be deleted yet. Try again shortly.', 'bad'))
 }
 
 export async function assignPost(req: Request, env: Env, ref: string): Promise<Response> {

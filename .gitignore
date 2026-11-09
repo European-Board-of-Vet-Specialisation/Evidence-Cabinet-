@@ -3,3 +3,4 @@ node_modules/
 .dev.vars
 *.log
 public/pdfjs/
+.e2e-public.json

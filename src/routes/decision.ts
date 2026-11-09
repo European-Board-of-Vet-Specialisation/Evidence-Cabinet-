@@ -35,7 +35,8 @@ const draftOf = (env: Env, ref: string) => env.DB.prepare('SELECT * FROM decisio
 const finalised = (env: Env, ref: string) => env.DB.prepare('SELECT d.*, p.display_name AS by_name FROM decisions d LEFT JOIN people p ON p.id = d.finalised_by WHERE d.case_ref = ? AND d.version IS NOT NULL ORDER BY d.version DESC').bind(ref).all<DecisionRow & { by_name: string | null }>()
 
 function adjustmentFields(ctx: CaseContext | null, chosen: Adjustment[]): string {
-  const types = ctx?.types.length ? ctx.types : [...ADJUSTMENT_TYPES]
+  // "Other approved" needs the College's list; with none, there is nothing to choose.
+  const types = (ctx?.types.length ? ctx.types : [...ADJUSTMENT_TYPES]).filter(t => t !== 'other' || !!ctx?.codes.length)
   const has = (t: AdjustmentType) => chosen.find(a => a.type === t)
   const val = (t: AdjustmentType, k: string) => esc(String(has(t)?.params[k] ?? ''))
   const box = (t: AdjustmentType, inner: string) => `<div class="card"><label><input type="checkbox" name="adj.${t}.on" value="1" ${has(t) ? 'checked' : ''}> ${esc(ADJUSTMENT_LABEL[t])}</label>${inner}</div>`

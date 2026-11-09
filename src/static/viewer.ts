@@ -35,16 +35,17 @@ async function main() {
     say(doc.numPages + ' page' + (doc.numPages === 1 ? '' : 's'))
     for (let i = 1; i <= doc.numPages; i++) {
       const p = await doc.getPage(i), vp = p.getViewport({ scale })
-      const c = canvasFor(Math.floor(vp.width), Math.floor(vp.height)), ctx = c.getContext('2d')
-      await p.render({ canvasContext: ctx, viewport: vp, annotationMode: pdfjs.AnnotationMode.DISABLE }).promise
-      watermark(ctx, c.width, c.height)
+      const c = canvasFor(Math.floor(vp.width), Math.floor(vp.height))
+      await p.render({ canvas: c, viewport: vp, annotationMode: pdfjs.AnnotationMode.DISABLE }).promise
+      watermark(c.getContext('2d'), c.width, c.height)
     }
   } else {
     const img = await createImageBitmap(new Blob([data], { type: kind }))
     const c = canvasFor(img.width, img.height), ctx = c.getContext('2d')
     ctx.drawImage(img, 0, 0); watermark(ctx, c.width, c.height); say('')
   }
-  data.fill(0)
+  // Blank our copy of the bytes. A PDF's buffer has already gone to the PDF.js worker.
+  if (data.byteLength) data.fill(0)
 }
 document.addEventListener('contextmenu', e => { if (root.contains(e.target)) e.preventDefault() })
-main().catch(() => say('The document could not be shown.'))`
+main().catch(e => { console.error('viewer:', e && e.name); say('The document could not be shown.') })`

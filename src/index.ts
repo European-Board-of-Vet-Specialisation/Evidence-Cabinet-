@@ -15,15 +15,22 @@ import { enrolPage, signinPage, signout, registerOptions, registerVerify, authOp
 import { caseList, caseView, postComment, correctComment } from './routes/cases'
 import { viewerPage, viewerRaw } from './routes/viewer'
 import { decisionPage, saveDraft, finalise, retryDecision } from './routes/decision'
-import { adminHome, addPerson, personPage, personPost, adminCase, assignPost, retainPost, retryEventPost } from './routes/admin'
+import { adminHome, addPerson, personPage, personPost, adminCase, assignPost, retainPost, retryEventPost, disposePost } from './routes/admin'
 import { runDaily } from './retention'
 import { page, notice, SECURITY_HEADERS } from './ui/layout'
 import { PASSKEY_JS } from './static/passkey'
 import { VIEWER_JS } from './static/viewer'
+import { setLocalHttp } from './util'
 
 // A form post from another site may reach /launch only, and only with a pass. Everything else
-// that changes state must come from this origin.
-const sameOrigin = (req: Request, env: Env) => { const o = req.headers.get('origin'); return !o || o === env.CABINET_ORIGIN }
+// that changes state must come from this origin. Browsers say so by Origin, or — where a page's
+// referrer policy makes them send "Origin: null" — by Sec-Fetch-Site. A request with neither is
+// not from a browser, so carries no ambient cookies to abuse.
+function sameOrigin(req: Request, env: Env): boolean {
+  const o = req.headers.get('origin'), site = req.headers.get('sec-fetch-site')
+  if (o && o !== 'null') return o === env.CABINET_ORIGIN
+  return !site || site === 'same-origin' || site === 'none'
+}
 const js = (src: string) => new Response(src, { headers: { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'public, max-age=3600', ...SECURITY_HEADERS } })
 const REF = '(ec-[a-z0-9]{26})'
 
@@ -63,6 +70,7 @@ const routes: Array<[string, RegExp, Handler]> = [
   ['POST', /^\/admin\/person\/(\d+)$/, (r, e, _c, m) => personPost(r, e, Number(m[1]))],
   ['GET', new RegExp(`^/admin/case/${REF}$`), (r, e, _c, m) => adminCase(r, e, m[1]!)],
   ['POST', new RegExp(`^/admin/case/${REF}/assign$`), (r, e, _c, m) => assignPost(r, e, m[1]!)],
+  ['POST', new RegExp(`^/admin/case/${REF}/dispose$`), (r, e, c, m) => disposePost(r, e, c, m[1]!)],
   ['POST', /^\/admin\/event\/(\d+)\/retry$/, (r, e, c, m) => retryEventPost(r, e, c, Number(m[1]))],
   ['GET', /^\/$/, (r) => new Response(null, { status: 303, headers: { Location: '/cases' } })],
 ]
@@ -70,6 +78,7 @@ const routes: Array<[string, RegExp, Handler]> = [
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const path = new URL(req.url).pathname
+    setLocalHttp(env.CABINET_ORIGIN)
     try {
       const exempt = path === '/launch' || path.startsWith('/api/signals') || path === '/api/pair'
       if (req.method === 'POST' && !exempt && !sameOrigin(req, env)) return page(env, 'Refused', notice('That request came from another site.', 'bad'), 403)
