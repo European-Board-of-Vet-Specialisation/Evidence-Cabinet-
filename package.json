@@ -7,12 +7,12 @@
   "type": "module",
   "scripts": {
     "dev": "npm run build && wrangler dev",
-    "deploy": "npm run build && wrangler d1 migrations apply DB --remote && wrangler deploy",
+    "deploy": "npm run build && wrangler deploy",
     "migrate": "wrangler d1 migrations apply DB --remote",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "node scripts/gen-schema.mjs --check && vitest run",
     "keygen": "node scripts/keygen.mjs",
-    "build": "node scripts/copy-pdfjs.mjs"
+    "build": "node scripts/gen-schema.mjs && node scripts/copy-pdfjs.mjs"
   },
   "dependencies": {
     "@simplewebauthn/server": "14.0.3",

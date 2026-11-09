@@ -22,6 +22,7 @@ import { PASSKEY_JS } from './static/passkey'
 import { VIEWER_JS } from './static/viewer'
 import { KEYGEN_JS } from './static/keygen'
 import { setLocalHttp } from './util'
+import { ensureSchema } from './migrate'
 
 // A form post from another site may reach /launch only, and only with a pass. Everything else
 // that changes state must come from this origin. Browsers say so by Origin, or — where a page's
@@ -82,6 +83,7 @@ export default {
     const path = new URL(req.url).pathname
     setLocalHttp(env.CABINET_ORIGIN)
     try {
+      await ensureSchema(env)
       const exempt = path === '/launch' || path.startsWith('/api/signals') || path === '/api/pair'
       if (req.method === 'POST' && !exempt && !sameOrigin(req, env)) return page(env, 'Refused', notice('That request came from another site.', 'bad'), 403)
       for (const [method, re, h] of routes) {
@@ -98,6 +100,6 @@ export default {
   },
 
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
-    ctx.waitUntil(runDaily(env).then(t => console.log('[cabinet] daily', JSON.stringify(t))).catch(e => console.error('[cabinet] daily failed', e instanceof Error ? e.name : 'unknown')))
+    ctx.waitUntil(ensureSchema(env).then(() => runDaily(env)).then(t => console.log('[cabinet] daily', JSON.stringify(t))).catch(e => console.error('[cabinet] daily failed', e instanceof Error ? e.name : 'unknown')))
   },
 } satisfies ExportedHandler<Env>

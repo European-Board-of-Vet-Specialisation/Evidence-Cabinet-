@@ -1,7 +1,8 @@
 # The College's evidence cabinet. Everything here runs in the College's own Cloudflare account.
 #
 # Before the first deploy (the setup guide in README.md walks through it):
-#   npx wrangler d1 create cabinet --jurisdiction eu        → paste the database_id below
+#   npx wrangler d1 create cabinet --jurisdiction eu        → add database_id = "…" below
+#   (with the Deploy to Cloudflare button, leave it out: Cloudflare creates the database)
 #   npx wrangler r2 bucket create cabinet-evidence --jurisdiction eu
 #   npx wrangler secret put COLLEGE_SIGNING_KEY             → the private JWK from `npm run keygen`
 #   npx wrangler secret put SETUP_TOKEN                     → a long random string, used once
@@ -36,7 +37,6 @@ VIEW_COUNTRIES = "AT,BE,BG,HR,CY,CZ,DK,EE,FI,FR,DE,GR,HU,IS,IE,IT,LV,LI,LT,LU,MT
 [[d1_databases]]
 binding = "DB"
 database_name = "cabinet"
-database_id = "00000000-0000-0000-0000-000000000000"
 migrations_dir = "migrations"
 
 [[r2_buckets]]
