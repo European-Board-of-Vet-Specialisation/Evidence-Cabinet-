@@ -27,7 +27,8 @@ export function page(env: Env, title: string, body: string, status = 200, opts: 
   const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow"><title>${esc(title)} · ${esc(env.COLLEGE)} evidence cabinet</title><style>${CSS}</style></head>
 <body><header><b>${esc(env.COLLEGE)} evidence cabinet</b>${opts.nav ? `<nav>${opts.nav}</nav>` : ''}</header>
-<main><h1>${esc(title)}</h1>${body}</main>${opts.script ? `<script src="${esc(opts.script)}"></script>` : ''}</body></html>`
+<main><h1>${esc(title)}</h1>${body}</main>
+<footer style="max-width:960px;margin:0 auto;padding:0 16px 24px" class="muted"><a href="${esc(env.SOURCE_URL || SOURCE_DEFAULT)}" rel="noopener noreferrer">Source code</a> · AGPL-3.0</footer>${opts.script ? `<script src="${esc(opts.script)}"></script>` : ''}</body></html>`
   return new Response(html, { status, headers: { 'Content-Type': 'text/html; charset=utf-8', ...NO_STORE, ...SECURITY_HEADERS } })
 }
 
@@ -37,5 +38,8 @@ export const SECURITY_HEADERS = {
   'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
   'Strict-Transport-Security': 'max-age=31536000',
 }
+
+/** The published source. A College running a modified version sets SOURCE_URL to its own. */
+const SOURCE_DEFAULT = 'https://github.com/European-Board-of-Vet-Specialisation/Evidence-Cabinet-'
 
 export const notice = (text: string, kind: '' | 'warn' | 'bad' | 'good' = '') => `<p class="notice ${kind}">${esc(text)}</p>`

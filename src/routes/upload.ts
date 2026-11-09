@@ -5,8 +5,8 @@
 import type { Env } from '../env'
 import { candidate } from '../session'
 import { getCase, objectKey, touchStmt } from '../cases'
-import { queueEvent, deliverDue } from '../outbox'
-import { checkFile, CONTENT_TYPE, MAX_FILES, MAX_STATEMENT, type Kind } from '../filetype'
+import { queueEventIf, deliverDue } from '../outbox'
+import { checkFile, CONTENT_TYPE, MAX_FILES, MAX_STATEMENT, MAX_VERSIONS, MAX_CASE_BYTES, type Kind } from '../filetype'
 import { page, notice } from '../ui/layout'
 import { esc, nowIso } from '../util'
 
@@ -72,6 +72,11 @@ export async function uploadPost(req: Request, env: Env, ctx: ExecutionContext):
 
   const last = await env.DB.prepare('SELECT MAX(version) AS v FROM evidence_versions WHERE case_ref = ?').bind(me.case_ref).first<{ v: number | null }>()
   const version = (last?.v ?? 0) + 1
+  // Per case, not per post: a case cannot grow without end (storage, and every hold or release
+  // move copies every object).
+  const held = await env.DB.prepare('SELECT COALESCE(SUM(size), 0) AS b FROM files WHERE case_ref = ?').bind(me.case_ref).first<{ b: number }>()
+  if (version > MAX_VERSIONS) return uploadPage(req, env, notice(`This claim already has ${MAX_VERSIONS} submissions. Contact ${env.COLLEGE} if you need to send more.`, 'bad'))
+  if ((held?.b ?? 0) + checked.reduce((n, f) => n + f.bytes.length, 0) > MAX_CASE_BYTES) return uploadPage(req, env, notice(`This would take the claim over ${MAX_CASE_BYTES / 1024 / 1024} MB of documents. Contact ${env.COLLEGE}.`, 'bad'))
   const stored: string[] = []
   const ids: Array<{ id: string; kind: Kind; size: number }> = []
   try {
@@ -89,16 +94,27 @@ export async function uploadPost(req: Request, env: Env, ctx: ExecutionContext):
 
   const now = nowIso()
   const label = (n: number) => `Submission ${version}, document ${n}`
+  // EVERY WRITE IS GUARDED on the case being open and where the files were put. A deletion or a
+  // move to hold/ that ran while the files were uploading must win: otherwise evidence would be
+  // stored after My College had been told it was deleted, or outside the hold.
+  const open = 'EXISTS (SELECT 1 FROM cases WHERE case_ref = ? AND state = \'open\' AND location = ?)'
+  const guard = [me.case_ref, c.location] as const
   try { await env.DB.batch([
-    env.DB.prepare('INSERT INTO evidence_versions (case_ref, version, statement, complete, created_at, completed_at) VALUES (?, ?, ?, 1, ?, ?)').bind(me.case_ref, version, statement, now, now),
-    ...ids.map((f, i) => env.DB.prepare('INSERT INTO files (id, case_ref, version, kind, size, label, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(f.id, me.case_ref, version, f.kind, f.size, label(i + 1), now)),
+    env.DB.prepare(`INSERT INTO evidence_versions (case_ref, version, statement, complete, created_at, completed_at) SELECT ?, ?, ?, 1, ?, ? WHERE ${open}`).bind(me.case_ref, version, statement, now, now, ...guard),
+    ...ids.map((f, i) => env.DB.prepare(`INSERT INTO files (id, case_ref, version, kind, size, label, created_at) SELECT ?, ?, ?, ?, ?, ?, ? WHERE ${open}`).bind(f.id, me.case_ref, version, f.kind, f.size, label(i + 1), now, ...guard)),
     touchStmt(env, me.case_ref),
-    env.DB.prepare('UPDATE cases SET candidate_name = ? WHERE case_ref = ?').bind(name, me.case_ref),
-    queueEvent(env, 'evidence.received', { case_ref: me.case_ref, version, status: 'received', at: now }),
+    env.DB.prepare('UPDATE cases SET candidate_name = ? WHERE case_ref = ? AND state = \'open\' AND location = ?').bind(name, ...guard),
+    queueEventIf(env, 'evidence.received', { case_ref: me.case_ref, version, status: 'received', at: now }, null,
+      'EXISTS (SELECT 1 FROM evidence_versions WHERE case_ref = ? AND version = ? AND created_at = ?)', me.case_ref, version, now),
   ]) } catch {
     // Another submission took this version number at the same moment: keep nothing of this one.
     await env.EVIDENCE.delete(stored).catch(() => {})
     return uploadPage(req, env, notice('Another submission arrived at the same time. Nothing was sent from this one. Try again.', 'bad'))
+  }
+  const kept = await env.DB.prepare('SELECT 1 FROM evidence_versions WHERE case_ref = ? AND version = ? AND created_at = ?').bind(me.case_ref, version, now).first()
+  if (!kept) {
+    await env.EVIDENCE.delete(stored).catch(() => {})
+    return page(env, 'Not sent', notice(`This claim was closed or put on hold while you were uploading, so nothing was kept. Open your claim in My College again.`, 'bad'))
   }
   ctx.waitUntil(deliverDue(env))
   return uploadPage(req, env, notice(`Received. Submission ${version}, with ${ids.length} document${ids.length === 1 ? '' : 's'}, is with ${env.COLLEGE}.`, 'good'))

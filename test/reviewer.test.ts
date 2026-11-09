@@ -12,9 +12,10 @@ describe('setup wizard', () => {
     expect(await wrong.text()).toContain('not right')
     const ok = await call(postForm('/setup', { token: 'test-setup-token-0123456789', name: 'Ada' }))
     expect(ok.status).toBe(303)
-    const enrol = await get(ok.headers.get('location')!)
-    expect(await enrol.text()).toContain('Create your passkey')
-    const opts = await call(new Request(ORIGIN + '/api/passkey/register/options', { method: 'POST', body: JSON.stringify({ token: ok.headers.get('location')!.split('/').pop() }), headers: { 'Content-Type': 'application/json' } }))
+    const [path, token] = ok.headers.get('location')!.split('#')
+    expect(path).toBe('/enrol')
+    expect(await (await get(path!)).text()).toContain('Create your passkey')
+    const opts = await call(new Request(ORIGIN + '/api/passkey/register/options', { method: 'POST', body: JSON.stringify({ token }), headers: { 'Content-Type': 'application/json' } }))
     const j = await opts.json<{ ok: boolean; options: { rp: { id: string }; authenticatorSelection: { userVerification: string } } }>()
     expect(j.options.rp.id).toBe('cabinet.test')
     expect(j.options.authenticatorSelection.userVerification).toBe('required')
@@ -94,10 +95,11 @@ describe('decisions (spec §6.1)', () => {
     expect(preview).toContain('My College will record')
     expect(preview).toContain('&quot;cycle_id&quot;: 12')
     expect(preview).not.toContain('Hospital letter')
-    const draftId = await env.DB.prepare('SELECT id FROM decisions WHERE case_ref = ? AND version IS NULL').bind(ref).first<number>('id')
+    const draftRow = await env.DB.prepare('SELECT id, drafted_at FROM decisions WHERE case_ref = ? AND version IS NULL').bind(ref).first<{ id: number; drafted_at: string }>()
+    const draftId = draftRow!.id, saved = draftRow!.drafted_at
     const mc = mockMc(() => ({ status: 200, json: { ok: true, result: 'recorded', version: 1 } }))
     try {
-      const fin = await call(postForm(`/case/${ref}/decision/finalise`, { draft: String(draftId), version: '1' }, chair.cookie))
+      const fin = await call(postForm(`/case/${ref}/decision/finalise`, { draft: String(draftId), version: '1', saved }, chair.cookie))
       expect(fin.status).toBe(303)
       const sent = mc.seen.find(b => b.type === 'claim.decision_finalised')!
       expect(sent).toMatchObject({ case_ref: ref, version: 1, decision_type: 'initial', outcome: 'upheld', adjustments: [{ type: 'deferral', params: { cycle_id: 12 } }] })
@@ -105,16 +107,16 @@ describe('decisions (spec §6.1)', () => {
       expect(await (await get(`/case/${ref}/decision`, reviewer.cookie)).text()).toContain('Recorded in My College')
     } finally { mc.restore() }
     // A stale form cannot finalise the same version twice.
-    expect(await (await call(postForm(`/case/${ref}/decision/finalise`, { draft: String(draftId), version: '1' }, chair.cookie))).text()).toContain('changed')
+    expect(await (await call(postForm(`/case/${ref}/decision/finalise`, { draft: String(draftId), version: '1', saved }, chair.cookie))).text()).toContain('changed')
   })
   it('makes a correction a new version linked to the one before', async () => {
     const ref = await caseWithEvidence(ctx)
     const chair = await person({ finalise: true }); await assign(ref, chair.id)
     const fin = async (outcome: string, type: string) => {
       await call(postForm(`/case/${ref}/decision/draft`, { decision_type: type, outcome, go: 'save' }, chair.cookie))
-      const id = await env.DB.prepare('SELECT id FROM decisions WHERE case_ref = ? AND version IS NULL').bind(ref).first<number>('id')
+      const row = await env.DB.prepare('SELECT id, drafted_at FROM decisions WHERE case_ref = ? AND version IS NULL').bind(ref).first<{ id: number; drafted_at: string }>()
       const v = ((await env.DB.prepare('SELECT MAX(version) AS v FROM decisions WHERE case_ref = ?').bind(ref).first<number>('v')) ?? 0) + 1
-      return call(postForm(`/case/${ref}/decision/finalise`, { draft: String(id), version: String(v) }, chair.cookie))
+      return call(postForm(`/case/${ref}/decision/finalise`, { draft: String(row!.id), version: String(v), saved: row!.drafted_at }, chair.cookie))
     }
     await fin('not_upheld', 'initial'); await fin('upheld', 'appeal')
     const rows = (await env.DB.prepare('SELECT id, version, decision_type, supersedes FROM decisions WHERE case_ref = ? ORDER BY version').bind(ref).all<{ id: number; version: number; decision_type: string; supersedes: number | null }>()).results

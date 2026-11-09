@@ -44,6 +44,7 @@ export const signal = (type: string, ref: string, over: Record<string, unknown> 
 
 export async function call(req: Request) {
   await mcKeys()
+  if (!(req as Request & { cf?: unknown }).cf) req = new Request(req, { cf: { country: 'IE' } } as RequestInit)
   const ctx = createExecutionContext()
   const res = await worker.fetch(req, env, ctx)
   await waitOnExecutionContext(ctx)

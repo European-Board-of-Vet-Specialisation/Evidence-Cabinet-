@@ -19,24 +19,31 @@ export async function runDaily(env: Env, today = new Date()): Promise<Record<str
   const tally = { deleted: 0, lapsed: 0, remindRetention: 0, remindDeletion: 0, incomplete: 0, summary: 0 }
 
   const open = (await env.DB.prepare('SELECT * FROM cases WHERE state = \'open\'').all<CaseRow>()).results
+  const remindRetention: string[] = [], remindDeletion: string[] = []
   for (const c of open) {
-    const a = retentionAction(c, today)
-    if (a.do === 'delete') { (await dispose(env, c.case_ref, 'backstop')) ? tally.deleted++ : tally.incomplete++ }
-    else if (a.do === 'lapse_flag') {
-      await env.DB.prepare('UPDATE cases SET retain_until = NULL, retain_reason = NULL, retain_by = NULL, reminded_retention_at = NULL, reminded_deletion_at = NULL WHERE case_ref = ?').bind(c.case_ref).run()
-      await fromHold(env, c.case_ref)
-      tally.lapsed++
-    } else if (a.do === 'remind_retention') {
-      await env.DB.prepare('UPDATE cases SET reminded_retention_at = ? WHERE case_ref = ?').bind(now, c.case_ref).run(); tally.remindRetention++
-    } else if (a.do === 'remind_deletion') {
-      await env.DB.prepare('UPDATE cases SET reminded_deletion_at = ? WHERE case_ref = ?').bind(now, c.case_ref).run(); tally.remindDeletion++
-    }
+    // One case at a time, each on its own: a case that fails (a slow move, a platform limit) is
+    // tried again tomorrow and never stops the rest.
+    try {
+      const a = retentionAction(c, today)
+      if (a.do === 'delete') { (await dispose(env, c.case_ref, 'backstop')) ? tally.deleted++ : tally.incomplete++ }
+      else if (a.do === 'lapse_flag') {
+        await env.DB.prepare('UPDATE cases SET retain_until = NULL, retain_reason = NULL, retain_by = NULL, reminded_retention_at = NULL, reminded_deletion_at = NULL WHERE case_ref = ?').bind(c.case_ref).run()
+        await fromHold(env, c.case_ref)
+        tally.lapsed++
+      } else if (a.do === 'remind_retention') remindRetention.push(c.case_ref)
+      else if (a.do === 'remind_deletion') remindDeletion.push(c.case_ref)
+      else if (c.location === 'hold' && !c.ebvs_hold && !flagActive(c, today)) await fromHold(env, c.case_ref)   // an interrupted move back resumes
+    } catch { tally.incomplete++ }
   }
+  tally.remindRetention = remindRetention.length; tally.remindDeletion = remindDeletion.length
 
-  const recipients = (tally.remindRetention || tally.remindDeletion || summaryDue(today, null)) ? await retentionRecipients(env) : []
+  // A reminder is marked sent ONLY in the same batch that queues the notice: if anything fails,
+  // neither happens, and tomorrow's run tries again. The case is never deleted unwarned.
+  const recipients = await retentionRecipients(env)
   const notices: D1PreparedStatement[] = []
-  if (recipients.length && tally.remindRetention) notices.push(queueEvent(env, 'reviewer.notification_requested', { kind: 'retention_review', recipients }))
-  if (recipients.length && tally.remindDeletion) notices.push(queueEvent(env, 'reviewer.notification_requested', { kind: 'deletion_due', recipients }))
+  const stamp = (col: string, refs: string[]) => refs.map(r => env.DB.prepare(`UPDATE cases SET ${col} = ? WHERE case_ref = ?`).bind(now, r))
+  if (recipients.length && remindRetention.length) notices.push(...stamp('reminded_retention_at', remindRetention), queueEvent(env, 'reviewer.notification_requested', { kind: 'retention_review', recipients }))
+  if (recipients.length && remindDeletion.length) notices.push(...stamp('reminded_deletion_at', remindDeletion), queueEvent(env, 'reviewer.notification_requested', { kind: 'deletion_due', recipients }))
 
   // Six-monthly summary: numbers only, viewed in the cabinet.
   const last = await env.DB.prepare('SELECT period_end FROM summaries ORDER BY period_end DESC LIMIT 1').first<{ period_end: string }>()
@@ -49,8 +56,7 @@ export async function runDaily(env: Env, today = new Date()): Promise<Record<str
     notices.push(env.DB.prepare('INSERT INTO summaries (period_end, cases_held, cases_flagged, deleted_in_period, deletions_due, created_at) VALUES (?, ?, ?, ?, ?, ?)').bind(
       period.toISOString(), stillOpen.length, stillOpen.filter(c => flagActive(c, today)).length, deleted?.n ?? 0,
       stillOpen.filter(c => !flagActive(c, today) && !c.ebvs_hold && backstopAt(c) <= horizon).length, now))
-    const to = recipients.length ? recipients : await retentionRecipients(env)
-    if (to.length) notices.push(queueEvent(env, 'reviewer.notification_requested', { kind: 'summary', recipients: to }))
+    if (recipients.length) notices.push(queueEvent(env, 'reviewer.notification_requested', { kind: 'summary', recipients }))
     tally.summary = 1
   }
   if (notices.length) await env.DB.batch(notices)
@@ -63,6 +69,8 @@ export async function runDaily(env: Env, today = new Date()): Promise<Record<str
     env.DB.prepare('DELETE FROM pending_launches WHERE expires_at < ?').bind(now),
     env.DB.prepare('DELETE FROM challenges WHERE expires_at < ?').bind(now),
     env.DB.prepare('DELETE FROM enrolments WHERE expires_at < ? AND used_at IS NULL').bind(now),
+    // Delivered events are kept a month for the administrator's view, then dropped.
+    env.DB.prepare('DELETE FROM outbox WHERE state = \'sent\' AND created_at < ?').bind(new Date(today.getTime() - 30 * 86_400_000).toISOString()),
   ])
   await deliverDue(env, 200)
   return tally

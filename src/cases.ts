@@ -105,6 +105,9 @@ export async function dispose(env: Env, ref: string, why: DisposeWhy): Promise<b
     env.DB.prepare('DELETE FROM view_log WHERE case_ref = ?').bind(ref),
     env.DB.prepare('DELETE FROM assignments WHERE case_ref = ?').bind(ref),
     env.DB.prepare('DELETE FROM candidate_sessions WHERE case_ref = ?').bind(ref),
+    // Delivered events about it carry its outcome and adjustments: gone with the case. Undelivered
+    // ones stay, so My College still learns of every decision.
+    env.DB.prepare('DELETE FROM outbox WHERE state = \'sent\' AND json_extract(body, \'$.case_ref\') = ?').bind(ref),
     env.DB.prepare('UPDATE cases SET state = \'disposed\', candidate_sub = NULL, candidate_name = NULL, context = NULL, retain_reason = NULL, retain_until = NULL, disposed_at = ?, disposed_why = ? WHERE case_ref = ?').bind(at, why, ref),
     queueEvent(env, 'evidence.deleted', { case_ref: ref, version: 0, status: 'deleted', at }),
   ])

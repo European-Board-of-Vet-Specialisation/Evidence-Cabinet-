@@ -2,7 +2,7 @@
 //
 //   My College → cabinet   POST /launch, GET /launch/continue, POST /api/signals, POST /api/pair
 //   candidate              GET|POST /upload
-//   College users          /signin, /enrol/:token, /cases, /case/:ref (+ comments, viewer,
+//   College users          /signin, /enrol (#token), /cases, /case/:ref (+ comments, viewer,
 //                          decision, retention), /admin…, /setup
 //   scheduled              the daily job (retention, reminders, summary) and event retries
 
@@ -48,7 +48,7 @@ const routes: Array<[string, RegExp, Handler]> = [
   ['POST', /^\/setup$/, (r, e) => setupPost(r, e)],
   ['GET', /^\/signin$/, (r, e) => signinPage(r, e)],
   ['POST', /^\/signout$/, (r, e) => signout(r, e)],
-  ['GET', /^\/enrol\/([A-Za-z0-9_-]+)$/, (_r, e, _c, m) => enrolPage(e, m[1]!)],
+  ['GET', /^\/enrol$/, (_r, e) => enrolPage(e)],
   ['POST', /^\/api\/passkey\/register\/options$/, (r, e) => registerOptions(r, e)],
   ['POST', /^\/api\/passkey\/register\/verify$/, (r, e) => registerVerify(r, e)],
   ['POST', /^\/api\/passkey\/auth\/options$/, (_r, e) => authOptions(e)],

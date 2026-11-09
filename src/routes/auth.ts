@@ -40,9 +40,15 @@ async function takeChallenge(req: Request, env: Env, purpose: string): Promise<{
 /** A one-time link to enrol a passkey, valid for seven days. */
 export async function createEnrolment(env: Env, personId: number, by: number | null): Promise<string> {
   const token = randomId(32)
-  await env.DB.prepare('INSERT INTO enrolments (token_hash, person_id, created_by, expires_at) VALUES (?, ?, ?, ?)')
-    .bind(await sha256(token), personId, by, new Date(Date.now() + 7 * 86_400_000).toISOString()).run()
-  return `${env.CABINET_ORIGIN}/enrol/${token}`
+  const now = nowIso()
+  await env.DB.batch([
+    // Only the newest link works: an earlier one, forwarded or lost, can no longer add a passkey.
+    env.DB.prepare('UPDATE enrolments SET expires_at = ? WHERE person_id = ? AND used_at IS NULL').bind(now, personId),
+    env.DB.prepare('INSERT INTO enrolments (token_hash, person_id, created_by, expires_at) VALUES (?, ?, ?, ?)')
+      .bind(await sha256(token), personId, by, new Date(Date.now() + 7 * 86_400_000).toISOString()),
+  ])
+  // The token is in the fragment: browsers never send it, so it is in no request log.
+  return `${env.CABINET_ORIGIN}/enrol#${token}`
 }
 
 async function enrolmentFor(env: Env, token: string) {
@@ -54,13 +60,12 @@ async function enrolmentFor(env: Env, token: string) {
 
 // ── pages ────────────────────────────────────────────────────────────────────
 
-export async function enrolPage(env: Env, token: string): Promise<Response> {
-  const e = await enrolmentFor(env, token)
-  if (!e) return page(env, 'Link not valid', notice('This enrolment link has expired or has been used. Ask your College administrator for a new one.', 'bad'), 404)
+/** The page itself knows nothing: its script reads the token from the fragment and the API checks it. */
+export async function enrolPage(env: Env): Promise<Response> {
   return page(env, 'Create your passkey', `
-<div class="card"><p>${esc(e.display_name)}, this link sets up your sign-in to the ${esc(env.COLLEGE)} evidence cabinet. Your device creates a passkey and keeps it; you unlock it with your face, fingerprint or device PIN. There is no password.</p>
-<p class="muted">Use your own device. The link works once.</p>
-<p><button id="register" data-token="${esc(token)}">Create passkey</button></p><p id="status" class="muted" role="status"></p></div>`, 200, { script: '/static/passkey.js' })
+<div class="card"><p>This link sets up your sign-in to the ${esc(env.COLLEGE)} evidence cabinet. Your device creates a passkey and keeps it; you unlock it with your face, fingerprint or device PIN. There is no password.</p>
+<p class="muted">Use your own device. The link works once, and only the newest link your administrator gave you works.</p>
+<p><button id="register">Create passkey</button></p><p id="status" class="muted" role="status"></p></div>`, 200, { script: '/static/passkey.js' })
 }
 
 export async function signinPage(req: Request, env: Env): Promise<Response> {
@@ -147,7 +152,8 @@ export async function authVerify(req: Request, env: Env): Promise<Response> {
 
 // ── setup wizard: the first administrator, once ──────────────────────────────
 
-const hasAdmin = async (env: Env) => !!(await env.DB.prepare('SELECT 1 FROM people WHERE is_admin = 1 AND active = 1').first())
+// Setup works only on an empty cabinet. Once anyone exists, recovery is by an administrator, not the token.
+const hasAdmin = async (env: Env) => !!(await env.DB.prepare('SELECT 1 FROM people').first())
 
 /** What the College needs to check and copy, before and after the first administrator exists. */
 async function checks(env: Env): Promise<string> {
@@ -201,6 +207,6 @@ export async function setupPost(req: Request, env: Env): Promise<Response> {
   if (sub && !/^p_[A-Za-z0-9_-]{16,40}$/.test(sub)) return setupPage(req, env, notice('That does not look like a My College ID (p_…).', 'bad'))
   const p = await env.DB.prepare('INSERT INTO people (sub, display_name, is_admin, can_finalise, can_retain, created_at) VALUES (?, ?, 1, 0, 1, ?) RETURNING id').bind(sub, name, nowIso()).first<{ id: number }>()
   const link = await createEnrolment(env, p!.id, null)
-  return new Response(null, { status: 303, headers: { Location: new URL(link).pathname, ...NO_STORE } })
+  return new Response(null, { status: 303, headers: { Location: new URL(link).pathname + new URL(link).hash, ...NO_STORE } })
 }
 

@@ -19,6 +19,14 @@ export function nav(me: Person): string {
 <form method="post" action="/signout" style="display:inline"><button class="secondary" type="submit">Sign out</button></form>`
 }
 
+/** The College's country rule (VIEW_COUNTRIES): applies to statements, discussion and decisions as well as files. */
+export function countryAllowed(req: Request, env: Env): boolean {
+  const allow = env.VIEW_COUNTRIES.split(',').map(s => s.trim().toUpperCase()).filter(Boolean)
+  if (!allow.length) return true
+  const country = (req as Request & { cf?: { country?: string } }).cf?.country
+  return !!country && allow.includes(country.toUpperCase())
+}
+
 const toSignin = (req: Request) => new Response(null, { status: 303, headers: { Location: `/signin?next=${encodeURIComponent(new URL(req.url).pathname)}`, 'Cache-Control': 'no-store' } })
 
 /** Signed in, and assigned to this open case. Returns the refusal page otherwise. */
@@ -26,6 +34,7 @@ export async function forCase(req: Request, env: Env, ref: string): Promise<{ me
   const me = await staff(req, env)
   if (!me) return toSignin(req)
   if (!isCaseRef(ref)) return page(env, 'Not found', notice('There is no such case.'), 404, { nav: nav(me) })
+  if (!countryAllowed(req, env)) return page(env, 'Not available here', notice(`Cases cannot be opened from your current country under ${env.COLLEGE}'s rules.`, 'bad'), 403, { nav: nav(me) })
   if (!(await assigned(env, me.id, ref))) return page(env, 'Not assigned', notice('You are not assigned to this case. Ask your College administrator.'), 403, { nav: nav(me) })
   const c = await getCase(env, ref)
   if (!c || c.state !== 'open') return page(env, 'Case closed', notice('This case has been closed and its records deleted.'), 404, { nav: nav(me) })

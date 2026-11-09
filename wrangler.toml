@@ -27,6 +27,8 @@ MC_BASE = "https://help.ebvs.eu"
 MC_ISSUER = "https://help.ebvs.eu/ec"
 # Shown on the upload page. Write it with your data protection officer.
 PRIVACY_NOTICE_URL = "https://www.example.org/privacy"
+# Where this deployment's source can be had (AGPL-3.0 §13). Change it if you modify the code.
+SOURCE_URL = "https://github.com/European-Board-of-Vet-Specialisation/Evidence-Cabinet-"
 # Countries reviewers may view evidence from (ISO codes, comma-separated). Empty = no check.
 # The default is the EEA plus adequacy countries; see docs/spec.md §8.
 VIEW_COUNTRIES = "AT,BE,BG,HR,CY,CZ,DK,EE,FI,FR,DE,GR,HU,IS,IE,IT,LV,LI,LT,LU,MT,NL,NO,PL,PT,RO,SK,SI,ES,SE,AD,AR,CA,FO,GG,IL,IM,JP,JE,NZ,KR,CH,GB,UY"

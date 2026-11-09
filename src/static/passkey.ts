@@ -20,10 +20,11 @@ export const PASSKEY_JS = String.raw`(() => {
     return out
   }
   const reg = document.getElementById('register')
+  if (reg && !location.hash.slice(1)) { reg.disabled = true; status('This page needs the full link your administrator gave you.') }
   if (reg) reg.addEventListener('click', async () => {
     reg.disabled = true; status('Follow your device’s prompt…')
     try {
-      const token = reg.dataset.token
+      const token = location.hash.slice(1)
       const { options: o } = await post('/api/passkey/register/options', { token })
       const cred = await navigator.credentials.create({ publicKey: { ...o, challenge: b64u.dec(o.challenge), user: { ...o.user, id: b64u.dec(o.user.id) },
         excludeCredentials: (o.excludeCredentials || []).map(c => ({ ...c, id: b64u.dec(c.id) })) } })

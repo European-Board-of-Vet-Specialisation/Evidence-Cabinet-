@@ -3,7 +3,7 @@
 
 import type { Env } from '../env'
 import { verifyFromMc, TYP, TrustError, bodyToken } from '../mc'
-import { dispose, toHold, fromHold, getCase } from '../cases'
+import { dispose, toHold } from '../cases'
 import { deliverDue } from '../outbox'
 import { isCaseRef, nowIso, NO_STORE } from '../util'
 
@@ -24,16 +24,14 @@ export async function signals(req: Request, env: Env, ctx: ExecutionContext): Pr
   if (seen) return json(200, { ok: true, result: 'duplicate' })
 
   if (type === 'appeal.hold') {
-    await env.DB.prepare('UPDATE cases SET ebvs_hold = 1 WHERE case_ref = ? AND state = \'open\'').bind(ref).run()
+    // The case may not exist yet: create it held, so a later upload cannot escape the hold.
+    await env.DB.prepare(`INSERT INTO cases (case_ref, created_at, last_activity_at, ebvs_hold, location) VALUES (?, ?, ?, 1, 'hold')
+        ON CONFLICT(case_ref) DO UPDATE SET ebvs_hold = 1 WHERE state = 'open'`).bind(ref, nowIso(), nowIso()).run()
     await toHold(env, ref)
   } else {
     // case.closed: the candidate withdrew (or, for a College not deciding here, the claim closed).
     // appeal.release: the EBVS appeal is over.
-    const c = await getCase(env, ref)
-    if (type === 'appeal.release' && c) {
-      await env.DB.prepare('UPDATE cases SET ebvs_hold = 0 WHERE case_ref = ?').bind(ref).run()
-      await fromHold(env, ref)
-    }
+    // Both delete everything under both prefixes; nothing needs moving back first.
     // Not yet fully deleted: answer 503 so My College retries the same signal.
     if (!(await dispose(env, ref, type === 'case.closed' ? 'withdrawn' : 'released'))) return json(503, { ok: false, error: 'deletion incomplete' })
   }

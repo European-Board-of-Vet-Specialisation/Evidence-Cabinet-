@@ -69,5 +69,24 @@ npm run typecheck
 6. `npm run keygen`, then `npx wrangler secret put COLLEGE_SIGNING_KEY` with the private key.
 7. `npx wrangler secret put SETUP_TOKEN` with a long random string.
 8. `npm run migrate && npm run deploy`
-9. In My College → College settings → Evidence handling: choose *A secure evidence cabinet*,
-   enter the cabinet's address and the **public** key, run the signed test and switch it on.
+9. Open `/setup` on the cabinet, enter the setup token and create the first administrator's passkey.
+   Then delete the secret: `npx wrangler secret delete SETUP_TOKEN`. Setup only ever works on an
+   empty cabinet.
+10. In My College → College settings → Evidence handling: choose *A secure evidence cabinet*,
+    enter the cabinet's address and the **public** key, run the signed test and switch it on.
+11. In the cabinet, add a second administrator.
+
+## Rotating the College's signing key
+
+1. `npm run keygen` for a new pair.
+2. In My College, paste the new **public** key as the *next* key. My College now trusts both.
+3. `npx wrangler secret put COLLEGE_SIGNING_KEY` with the new private key. Events are signed
+   with it from now on.
+4. In My College, make the new key the current one and remove the old one.
+
+## Licence
+
+GNU Affero General Public License v3.0 only (`LICENSE`). Colleges may use, study, change and run
+it. If a College runs a modified version, the people who use it are entitled to its source:
+every page links to it, from `SOURCE_URL` in `wrangler.toml`. Security reports: `SECURITY.md`.
+

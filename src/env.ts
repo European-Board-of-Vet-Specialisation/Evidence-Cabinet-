@@ -10,10 +10,10 @@ export interface Env {
   MC_ISSUER: string
   PRIVACY_NOTICE_URL: string
   VIEW_COUNTRIES: string
+  /** Where this deployment's source can be had (AGPL §13). Change it if you run a modified version. */
+  SOURCE_URL?: string
   /** The College's event-signing PRIVATE key, an Ed25519 JWK. */
   COLLEGE_SIGNING_KEY: string
-  /** During a rotation: the next private key. Events are signed with it once My College trusts it. */
-  COLLEGE_SIGNING_KEY_NEXT?: string
   /** Enrols the first administrator, once. */
   SETUP_TOKEN?: string
 }

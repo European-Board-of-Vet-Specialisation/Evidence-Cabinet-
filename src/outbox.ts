@@ -17,6 +17,17 @@ export function queueEvent(env: Env, type: EventType, fields: Record<string, unk
     .bind(eventId, type, JSON.stringify({ ...fields, event_id: eventId, type }), decisionId, now, now)
 }
 
+/**
+ * As queueEvent, but inserted only if `guard` (an SQL condition) holds inside the same batch —
+ * so an event is never queued for a write that did not happen.
+ */
+export function queueEventIf(env: Env, type: EventType, fields: Record<string, unknown>, decisionId: number | null, guard: string, ...binds: unknown[]): D1PreparedStatement {
+  const eventId = crypto.randomUUID()
+  const now = nowIso()
+  return env.DB.prepare(`INSERT INTO outbox (event_id, type, body, decision_id, state, attempts, next_attempt_at, created_at) SELECT ?, ?, ?, ?, 'pending', 0, ?, ? WHERE ${guard}`)
+    .bind(eventId, type, JSON.stringify({ ...fields, event_id: eventId, type }), decisionId, now, now, ...binds)
+}
+
 interface Row { id: number; event_id: string; type: string; body: string; decision_id: number | null; attempts: number }
 
 /** Deliver what is due. Safe to run concurrently with itself: a row is claimed before it is sent. */

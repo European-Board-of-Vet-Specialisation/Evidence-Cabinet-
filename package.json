@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "A College-owned evidence cabinet for extenuating-circumstances claims. Connects to My College; EBVS holds no key that can read it.",
-  "license": "UNLICENSED",
+  "license": "AGPL-3.0-only",
   "type": "module",
   "scripts": {
     "dev": "npm run assets && wrangler dev",

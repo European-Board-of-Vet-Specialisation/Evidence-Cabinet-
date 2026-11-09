@@ -5,6 +5,9 @@ export type Kind = 'pdf' | 'png' | 'jpeg'
 export const MAX_FILE_BYTES = 20 * 1024 * 1024
 export const MAX_FILES = 10
 export const MAX_STATEMENT = 20_000
+/** Per case: submissions, and bytes of documents across all of them. */
+export const MAX_VERSIONS = 20
+export const MAX_CASE_BYTES = 200 * 1024 * 1024
 
 export function sniff(head: Uint8Array): Kind | null {
   const at = (sig: number[], off = 0) => sig.every((b, i) => head[off + i] === b)

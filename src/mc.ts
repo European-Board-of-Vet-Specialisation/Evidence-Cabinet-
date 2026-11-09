@@ -59,8 +59,8 @@ async function loadKey(raw: string): Promise<SigningKey> {
 }
 
 /** The public half, for the setup wizard to show. */
-export async function publicJwk(env: Env, which: 'current' | 'next' = 'current'): Promise<{ jwk: JWK; kid: string } | null> {
-  const raw = which === 'next' ? env.COLLEGE_SIGNING_KEY_NEXT : env.COLLEGE_SIGNING_KEY
+export async function publicJwk(env: Env): Promise<{ jwk: JWK; kid: string } | null> {
+  const raw = env.COLLEGE_SIGNING_KEY
   if (!raw) return null
   const j = JSON.parse(raw) as JWK
   return { jwk: { kty: 'OKP', crv: 'Ed25519', x: j.x }, kid: await calculateJwkThumbprint({ kty: 'OKP', crv: 'Ed25519', x: j.x }, 'sha256') }

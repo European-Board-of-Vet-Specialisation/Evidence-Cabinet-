@@ -26,7 +26,7 @@ export async function launch(req: Request, env: Env): Promise<Response> {
   if (typeof pass !== 'string') return refuse(env, 'no pass')
 
   let p: Record<string, unknown>
-  try { p = await verifyFromMc(env, pass, TYP.launch) }
+  try { p = await verifyFromMc(env, pass, TYP.launch, { maxAgeSec: PASS_TTL }) }
   catch (e) { return refuse(env, e instanceof TrustError && e.message === 'ERR_JWT_EXPIRED' ? 'it has expired' : 'it is not valid here') }
 
   const exp = Number(p.exp), iat = Number(p.iat)

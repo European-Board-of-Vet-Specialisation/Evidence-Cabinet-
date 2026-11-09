@@ -5,19 +5,12 @@
 // country and are logged: reviewer, case, file, time, country (spec §8).
 
 import type { Env } from '../env'
-import { forCase, nav } from './cases'
+import { forCase, nav, countryAllowed } from './cases'
 import { objectKey } from '../cases'
 import { page, notice } from '../ui/layout'
 import { esc, nowIso, NO_STORE } from '../util'
 
 const VIEWER_CSP = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; style-src 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'none'"
-
-function countryAllowed(req: Request, env: Env): boolean {
-  const allow = env.VIEW_COUNTRIES.split(',').map(s => s.trim().toUpperCase()).filter(Boolean)
-  if (!allow.length) return true
-  const country = (req as Request & { cf?: { country?: string } }).cf?.country
-  return !!country && allow.includes(country.toUpperCase())
-}
 
 async function fileOf(env: Env, ref: string, id: string) {
   return /^[0-9a-f-]{36}$/.test(id) ? env.DB.prepare('SELECT id, version, kind, label FROM files WHERE id = ? AND case_ref = ?').bind(id, ref).first<{ id: string; version: number; kind: string; label: string }>() : null

@@ -7,7 +7,7 @@
 import type { Env } from '../env'
 import { forCase, nav } from './cases'
 import { touchStmt } from '../cases'
-import { queueEvent, deliverDue, retryEvent } from '../outbox'
+import { queueEventIf, deliverDue, retryEvent } from '../outbox'
 import { page, notice } from '../ui/layout'
 import { esc, nowIso } from '../util'
 import { parseContext, adjustmentFromForm, describe, ADJUSTMENT_LABEL, ADJUSTMENT_TYPES, type Adjustment, type CaseContext, type AdjustmentType } from '../context'
@@ -158,7 +158,7 @@ ${row('Case', esc(ref.slice(3, 11).toUpperCase()))}
 <details class="card"><summary class="muted">The exact message, for administrators</summary><pre style="white-space:pre-wrap;font-size:12px">${esc(JSON.stringify(body, null, 2))}</pre></details>
 <p class="muted">Once finalised, this version is locked. A mistake is put right with a new version, and the candidate is told again.</p>
 <form method="post" action="/case/${esc(ref)}/decision/finalise" class="row">
-  <input type="hidden" name="draft" value="${d.id}"><input type="hidden" name="version" value="${body.version}">
+  <input type="hidden" name="draft" value="${d.id}"><input type="hidden" name="version" value="${body.version}"><input type="hidden" name="saved" value="${esc(d.drafted_at ?? '')}">
   <button type="submit">Finalise version ${body.version}</button><a class="btn secondary" href="/case/${esc(ref)}/decision">Back to the draft</a>
 </form>`, 200, { nav: nav(g.me) })
 }
@@ -169,19 +169,24 @@ export async function finalise(req: Request, env: Env, ctx: ExecutionContext, re
   const f = await req.formData()
   const d = await draftOf(env, ref)
   const version = Number(f.get('version'))
-  if (!d || String(d.id) !== String(f.get('draft')) || !d.outcome) return decisionPage(req, env, ref, notice('The draft changed. Check it again before finalising.', 'bad'))
+  // What is finalised must be what was previewed: any save since (by anyone) changes drafted_at.
+  if (!d || String(d.id) !== String(f.get('draft')) || !d.outcome || (d.drafted_at ?? '') !== String(f.get('saved') ?? '')) return decisionPage(req, env, ref, notice('The draft changed after your check. Check it again before finalising.', 'bad'))
   const latest = await env.DB.prepare('SELECT MAX(version) AS v FROM decisions WHERE case_ref = ?').bind(ref).first<{ v: number | null }>()
   if (version !== (latest?.v ?? 0) + 1) return decisionPage(req, env, ref, notice('Another version was finalised meanwhile. Check the draft again.', 'bad'))
   const at = nowIso()
   try {
     await env.DB.batch([
-      env.DB.prepare('UPDATE decisions SET version = ?, finalised_by = ?, finalised_at = ?, mc_state = \'pending\' WHERE id = ? AND version IS NULL').bind(version, g.me.id, at, d.id),
-      queueEvent(env, 'claim.decision_finalised', decisionPayload({ ...d, version }, at), d.id),
+      env.DB.prepare('UPDATE decisions SET version = ?, finalised_by = ?, finalised_at = ?, mc_state = \'pending\' WHERE id = ? AND version IS NULL AND drafted_at = ?').bind(version, g.me.id, at, d.id, d.drafted_at),
+      // Queued only if THIS request's lock took: two finalises of one draft send one event.
+      queueEventIf(env, 'claim.decision_finalised', decisionPayload({ ...d, version }, at), d.id,
+        'EXISTS (SELECT 1 FROM decisions WHERE id = ? AND version = ? AND finalised_by = ? AND finalised_at = ?)', d.id, version, g.me.id, at),
       touchStmt(env, ref),
     ])
   } catch {
     return decisionPage(req, env, ref, notice('Another version was finalised meanwhile. Check the draft again.', 'bad'))
   }
+  const locked = await env.DB.prepare('SELECT 1 FROM decisions WHERE id = ? AND finalised_by = ? AND finalised_at = ?').bind(d.id, g.me.id, at).first()
+  if (!locked) return decisionPage(req, env, ref, notice('The draft changed or was finalised meanwhile. Check it again.', 'bad'))
   ctx.waitUntil(deliverDue(env))
   return new Response(null, { status: 303, headers: { Location: `/case/${ref}/decision`, 'Cache-Control': 'no-store' } })
 }

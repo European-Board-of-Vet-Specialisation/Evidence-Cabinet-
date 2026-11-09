@@ -205,6 +205,8 @@ export async function retainPost(req: Request, env: Env, ref: string): Promise<R
   const done = (msg: string, kind: 'good' | 'bad') => me.is_admin ? adminCase(req, env, ref, notice(msg, kind)) : back(`/case/${ref}`)
   const f = await req.formData()
   if (f.get('go') === 'clear') {
+    // Keeping a case is open to those allowed to retain; ending the flag is an administrator's.
+    if (!me.is_admin) return page(env, 'Not allowed', notice('Only an administrator can remove a retention flag.', 'bad'), 403, { nav: nav(me) })
     await env.DB.prepare('UPDATE cases SET retain_until = NULL, retain_reason = NULL, retain_by = NULL, reminded_retention_at = NULL WHERE case_ref = ?').bind(ref).run()
     await fromHold(env, ref)
     return done('The flag is removed. The 18-month rule applies again.', 'good')
